@@ -12,17 +12,35 @@ import (
 
 var tr = &http.Transport{
 	DisableCompression: true,
-	DisableKeepAlives:  true,
-	//TLSClientConfig:    tlsClientSkipVerify,
+	DisableKeepAlives:  true, //TODO need testing
 }
 
+//счетчик TCP-соединений
 var numCon int
 
-//ProxyServ is for FUCKSAKE
+//ProxyServ структура реализующая интерфейс Handler
 type ProxyServ struct {
 	Log   *log.Logger
 	Debug bool
 	sync.Mutex
+}
+
+var users = make(map[string]string)
+
+func (p *ProxyServ) manageUsers(r *http.Request) string {
+	if clientIP, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		if _, ok := users[clientIP]; !ok {
+			users[clientIP] = "unknown"
+			go func(ip string) {
+				name, err := net.LookupAddr(ip)
+				if err == nil && len(name) > 0 {
+					users[ip] = name[0]
+				}
+			}(clientIP)
+		}
+		return clientIP
+	}
+	return ""
 }
 
 //Стандартная функция ServeHTTP интерфейса Handler
@@ -57,6 +75,7 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		p.Log.Print("Remote: ", r.RemoteAddr, " ; ", " URL RequestURI: ", r.URL.RequestURI())
 		p.Log.Print("Content Length: ", r.ContentLength)
 	*/
+
 	r.RequestURI = ""
 	r.Header.Del("Accept-Encoding")
 	//if _, ok := r.Header["Proxy-Connection"]; ok {
@@ -65,6 +84,7 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Header.Del("Proxy-Authenticate")
 	r.Header.Del("Proxy-Authorization")
 	r.Header.Del("Proxy-Connection")
+	r.Header.Del("Connection")
 
 	resp, err := tr.RoundTrip(r)
 	if err != nil {
@@ -78,6 +98,11 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.Debugf("Получен ответ от %v: %v", r.URL.Host, resp.Status)
+
+	//если получен "трейлер" заголовок
+	if len(resp.Trailer) > 0 {
+		p.Warnf("ОШИБКА Trayler хедер от: %v %v:", r.URL.Host, err.Error())
+	}
 
 	for k := range w.Header() {
 		w.Header().Del(k)
@@ -109,7 +134,9 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	numCon--
 	p.Unlock()
 
-	p.Warnf("[%d] %v: %v. %d байт за %v", numCon, r.Method, r.URL.Host, len(body), duration)
+	ip := p.manageUsers(r)
+
+	p.Warnf("[%d][%s:%s] %v: %v. %d байт за %v", numCon, ip, users[ip], r.Method, r.URL.Host, len(body), duration)
 
 }
 
@@ -168,7 +195,9 @@ func (p *ProxyServ) handleConnect(w http.ResponseWriter, r *http.Request) {
 	numCon--
 	p.Unlock()
 
-	p.Warnf("[%d] %v:  %v. %d байт за %v", numCon, r.Method, r.URL.Host, num, duration)
+	ip := p.manageUsers(r)
+
+	p.Warnf("[%d][%s:%s] %v:  %v. %d байт за %v", numCon, ip, users[ip], r.Method, r.URL.Host, num, duration)
 }
 
 //Debugf вывод для отладки если задан параметр Debug
