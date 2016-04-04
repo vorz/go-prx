@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"time"
 
-	"Proxy/prx"
+	"github.com/vorz/go-prx/prx"
 )
 
 var (
@@ -24,7 +24,7 @@ func main() {
 
 	//serv := http.Server{}
 
-	logger := log.New(os.Stdout, "log: ", log.Ldate|log.Ltime)
+	logger := log.New(os.Stdout, "log: ", log.Ltime)
 	logger.Printf("Сервер запущен: %v", time.Now())
 
 	pServ := &prx.ProxyServ{Log: logger}

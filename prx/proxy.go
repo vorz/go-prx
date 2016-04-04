@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -15,15 +16,23 @@ var tr = &http.Transport{
 	//TLSClientConfig:    tlsClientSkipVerify,
 }
 
+var numCon int
+
 //ProxyServ is for FUCKSAKE
 type ProxyServ struct {
 	Log   *log.Logger
 	Debug bool
+	sync.Mutex
 }
 
 //Стандартная функция ServeHTTP интерфейса Handler
 func (p *ProxyServ) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.Debugf("-------Получен запрос %v %v %v %v", r.URL.Path, r.Host, r.Method, r.URL.String())
+
+	p.Lock()
+	numCon++
+	p.Unlock()
+
 	if r.Method == "CONNECT" {
 		p.handleConnect(w, r)
 	} else {
@@ -50,9 +59,9 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	*/
 	r.RequestURI = ""
 	r.Header.Del("Accept-Encoding")
-	if _, ok := r.Header["Proxy-Connection"]; ok {
-		r.Header.Set("Connection", r.Header["Proxy-Connection"][0])
-	}
+	//if _, ok := r.Header["Proxy-Connection"]; ok {
+	//	r.Header.Set("Connection", r.Header["Proxy-Connection"][0])
+	//}
 	r.Header.Del("Proxy-Authenticate")
 	r.Header.Del("Proxy-Authorization")
 	r.Header.Del("Proxy-Connection")
@@ -96,7 +105,11 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	finish := time.Now()
 	duration := finish.Sub(start)
 
-	p.Warnf("%v:  %v. %d байт за %v", r.Method, r.URL.Host, len(body), duration)
+	p.Lock()
+	numCon--
+	p.Unlock()
+
+	p.Warnf("[%d] %v: %v. %d байт за %v", numCon, r.Method, r.URL.Host, len(body), duration)
 
 }
 
@@ -151,7 +164,11 @@ func (p *ProxyServ) handleConnect(w http.ResponseWriter, r *http.Request) {
 	finish := time.Now()
 	duration := finish.Sub(start)
 
-	p.Warnf("%v:  %v. %d байт за %v", r.Method, r.URL.Host, num, duration)
+	p.Lock()
+	numCon--
+	p.Unlock()
+
+	p.Warnf("[%d] %v:  %v. %d байт за %v", numCon, r.Method, r.URL.Host, num, duration)
 }
 
 //Debugf вывод для отладки если задан параметр Debug
