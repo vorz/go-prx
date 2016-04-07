@@ -89,7 +89,8 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	resp, err := tr.RoundTrip(r)
 	if err != nil {
 		p.Warnf("ОШИБКА при пересылке: %s", err.Error())
-		http.Error(w, "Ошибка доступа к удаленному сайту: "+err.Error(), 404)
+		http.NotFound(w, r)
+		//http.Error(w, "Ошибка доступа к удаленному сайту: "+err.Error(), 404)
 		return
 	}
 	if resp == nil {

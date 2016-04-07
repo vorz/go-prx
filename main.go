@@ -21,8 +21,10 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	//logFile, _ := os.Create("logs.txt")
-
 	//serv := http.Server{}
+
+	base := new(model)
+	base.Init()
 
 	logger := log.New(os.Stdout, "log: ", log.Ltime)
 	logger.Printf("Сервер запущен: %v", time.Now())
