@@ -16,6 +16,8 @@ var (
 	dbg  = flag.Bool("d", false, "Debug information")
 )
 
+var pServ *prx.ProxyServ
+
 func main() {
 	// Просим Go использовать все имеющиеся в системе процессоры.
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -25,11 +27,28 @@ func main() {
 
 	base := new(model)
 	base.Init()
+	defer base.Close()
 
 	logger := log.New(os.Stdout, "log: ", log.Ltime)
 	logger.Printf("Сервер запущен: %v", time.Now())
 
-	pServ := &prx.ProxyServ{Log: logger}
+	pServ = prx.NewServ(logger, *dbg)
+
+	go updateBase(1, base)
 
 	logger.Fatal(http.ListenAndServe(":"+*port, pServ))
+}
+
+func updateBase(mins int, m *model) {
+	timer := time.NewTicker(time.Minute * time.Duration(mins))
+	for {
+		<-timer.C
+		for k := range pServ.Users {
+			name, tr := pServ.GetUser(k)
+			m.UpdateUser(k, name, tr)
+			lst := m.GetUsers()
+			log.Print("##### USERS #######")
+			log.Print(lst)
+		}
+	}
 }

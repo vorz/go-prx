@@ -18,23 +18,47 @@ var tr = &http.Transport{
 //счетчик TCP-соединений
 var numCon int
 
-//ProxyServ структура реализующая интерфейс Handler
+type user struct {
+	name    string //днс-имя клиента (если есть)
+	traffic int64  //количество траффика
+}
+
+//ProxyServ - структура реализующая интерфейс Handler
 type ProxyServ struct {
 	Log   *log.Logger
 	Debug bool
+	Users map[string]*user
 	sync.Mutex
 }
 
-var users = make(map[string]string)
+//NewServ - функция-"конструктор" для инициализации мапа
+func NewServ(logger *log.Logger, d bool) *ProxyServ {
+	serv := new(ProxyServ)
+	serv.Log = logger
+	serv.Debug = d
+	serv.Users = make(map[string]*user)
+
+	return serv
+}
+
+//GetUser получить днс-имя и траффик по ip
+func (p *ProxyServ) GetUser(ip string) (string, int64) {
+	return p.Users[ip].name, p.Users[ip].traffic
+}
+
+//var users = make(map[string]string)
 
 func (p *ProxyServ) manageUsers(r *http.Request) string {
 	if clientIP, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		if _, ok := users[clientIP]; !ok {
-			users[clientIP] = "unknown"
+		if _, ok := p.Users[clientIP]; !ok {
+			u := new(user)
+			u.name = "unknown"
+			u.traffic = 0
+			p.Users[clientIP] = u
 			go func(ip string) {
 				name, err := net.LookupAddr(ip)
 				if err == nil && len(name) > 0 {
-					users[ip] = name[0]
+					p.Users[ip].name = name[0]
 				}
 			}(clientIP)
 		}
@@ -136,8 +160,10 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	p.Unlock()
 
 	ip := p.manageUsers(r)
+	num := int64(len(body))
+	p.Users[ip].traffic += num
 
-	p.Warnf("[%d][%s:%s] %v: %v. %d байт за %v", numCon, ip, users[ip], r.Method, r.URL.Host, len(body), duration)
+	p.Warnf("[%d][%s:%s] %v: %v. %d байт за %v (всего %v байт)", numCon, ip, p.Users[ip].name, r.Method, r.URL.Host, num, duration, p.Users[ip].traffic)
 
 }
 
@@ -197,8 +223,9 @@ func (p *ProxyServ) handleConnect(w http.ResponseWriter, r *http.Request) {
 	p.Unlock()
 
 	ip := p.manageUsers(r)
+	p.Users[ip].traffic += num
 
-	p.Warnf("[%d][%s:%s] %v:  %v. %d байт за %v", numCon, ip, users[ip], r.Method, r.URL.Host, num, duration)
+	p.Warnf("[%d][%s:%s] %v:  %v. %d байт за %v (всего %v байт)", numCon, ip, p.Users[ip].name, r.Method, r.URL.Host, num, duration, p.Users[ip].traffic)
 }
 
 //Debugf вывод для отладки если задан параметр Debug
