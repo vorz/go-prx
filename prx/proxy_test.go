@@ -13,10 +13,11 @@ import (
 )
 
 var logger = log.New(ioutil.Discard, "log: ", log.Ltime) //"пустой" лог
-var testProxy = &ProxyServ{Log: logger, Debug: false}
+var testProxy = NewServ(logger, false)
 var bufferedImage *bufio.Reader
 
 var testServ *httptest.Server
+var imageSize int
 
 func init() {
 
@@ -25,6 +26,7 @@ func init() {
 		log.Fatal(err)
 	}
 	bufferedImage, _ := ioutil.ReadAll(file)
+	imageSize = len(bufferedImage)
 	file.Close()
 
 	testServ = httptest.NewServer(nil)
@@ -108,6 +110,13 @@ func GetResponce(path string, t *testing.T) {
 		body1, _ := ioutil.ReadAll(resp1.Body)
 		body2, _ := ioutil.ReadAll(resp2.Body)
 
+		if strings.HasSuffix(path, "/image") {
+			size := len(body2)
+			if size != imageSize {
+				t.Errorf("Количество скопированных байт не равно размеру картинки. %d != %d ", size, imageSize)
+			}
+		}
+
 		if string(body1) != string(body2) {
 			t.Error("Тело ответа различается для разных запросов")
 		}
@@ -117,8 +126,48 @@ func GetResponce(path string, t *testing.T) {
 	}
 }
 
-func TestHtmlResponces(t *testing.T)     { GetResponce(testServ.URL+"/someHtml", t) }
-func TestImageResponces(t *testing.T)    { GetResponce(testServ.URL+"/image", t) }
+func TestHtmlResponces(t *testing.T) { GetResponce(testServ.URL+"/someHtml", t) }
+func TestImageResponces(t *testing.T) {
+	_, startTraffic := testProxy.GetUser("127.0.0.1")
+	GetResponce(testServ.URL+"/image", t)
+	_, endTraffic := testProxy.GetUser("127.0.0.1")
+	copied := endTraffic - startTraffic
+	if copied != int64(imageSize) {
+		t.Errorf("В статистике прокси-сервера неправильный размер скопированной картинки (%v != %v)", copied, imageSize)
+	}
+}
+
+func TestStress(t *testing.T) {
+	done := make(chan bool)
+	proxy := httptest.NewServer(testProxy)
+	pURL, _ := url.Parse(proxy.URL)
+	clProxy := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pURL)}}
+	req, _ := http.NewRequest("GET", testServ.URL+"/image", nil)
+
+	_, startTraffic := testProxy.GetUser("127.0.0.1")
+
+	for i := 1; i < 50; i++ {
+		go func() {
+			resp, err := clProxy.Do(req)
+			if err != nil {
+				t.Errorf("Ошибка соединения: %v", err)
+			} else {
+				resp.Body.Close()
+			}
+			done <- true
+		}()
+	}
+	for i := 1; i < 50; i++ {
+		<-done
+	}
+	_, endTraffic := testProxy.GetUser("127.0.0.1")
+	copied := endTraffic - startTraffic
+	if copied != int64(imageSize) {
+		t.Errorf("В статистике прокси-сервера неправильный размер скопированной картинки (%v != %v)", copied, imageSize*50)
+	}
+	proxy.Close()
+}
+
 func TestRealLifeResponces(t *testing.T) { GetResponce("http://yandex.ru", t) }
 
 //#################################################################################
@@ -152,6 +201,7 @@ func BenchmarkSimpleTextRespWithoutProxy(b *testing.B) {
 
 }
 
+/*
 func BenchmarkImageResp(b *testing.B) {
 	proxy := httptest.NewServer(testProxy)
 	defer proxy.Close()
@@ -178,3 +228,4 @@ func BenchmarkImageRespWithoutProxy(b *testing.B) {
 	}
 
 }
+*/

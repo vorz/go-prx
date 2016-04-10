@@ -6,28 +6,40 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
 var tr = &http.Transport{
 	DisableCompression: true,
-	DisableKeepAlives:  true, //TODO need testing
+	//DisableKeepAlives:  true, //TODO need testing
 }
 
 //счетчик TCP-соединений
 var numCon int
 
+//Неэкспортируемая структура, которая хранит общую статистику потребляемого трафика
+//по каждому юзеру (ip-адресу).
 type user struct {
 	name    string //днс-имя клиента (если есть)
 	traffic int64  //количество траффика
 }
 
+//Grabber - Статистику по каждому посещаемому сайту и список сайтов
+//сервер не хранит чтобы не захламлять оперативную память,
+//только отдает наружу через интерфейс
+type Grabber interface {
+	UpdateStat(ip string, site string, bytes int64)
+}
+
 //ProxyServ - структура реализующая интерфейс Handler
 type ProxyServ struct {
-	Log   *log.Logger
-	Debug bool
-	Users map[string]*user
+	Log       *log.Logger
+	Debug     bool
+	Users     map[string]*user
+	Grab      Grabber
+	Restricts []string
 	sync.Mutex
 }
 
@@ -75,6 +87,13 @@ func (p *ProxyServ) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	numCon++
 	p.Unlock()
 
+	for _, str := range p.Restricts {
+		if strings.Contains(r.URL.Host, str) {
+			w.Write([]byte("Доступ на запрашиваемый сайт закрыт, обратитесь к администратору"))
+			return
+		}
+	}
+
 	if r.Method == "CONNECT" {
 		p.handleConnect(w, r)
 	} else {
@@ -112,13 +131,13 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := tr.RoundTrip(r)
 	if err != nil {
-		p.Warnf("ОШИБКА при пересылке: %s", err.Error())
+		//p.Warnf("ОШИБКА при пересылке: %s", err.Error())
 		http.NotFound(w, r)
 		//http.Error(w, "Ошибка доступа к удаленному сайту: "+err.Error(), 404)
 		return
 	}
 	if resp == nil {
-		p.Warnf("ОШИБКА получения ответа от сервера %v %v:", r.URL.Host, err.Error())
+		//p.Warnf("ОШИБКА получения ответа от сервера %v %v:", r.URL.Host, err.Error())
 		http.Error(w, "ОШИБКА получения ответа от сервера: "+err.Error(), 500)
 		return
 	}
@@ -126,7 +145,7 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 
 	//если получен "трейлер" заголовок
 	if len(resp.Trailer) > 0 {
-		p.Warnf("ОШИБКА Trayler хедер от: %v %v:", r.URL.Host, err.Error())
+		p.Warnf("ОШИБКА Trailer хедер от: %v %v:", r.URL.Host, err.Error())
 	}
 
 	for k := range w.Header() {
@@ -163,8 +182,11 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	num := int64(len(body))
 	p.Users[ip].traffic += num
 
+	//webSite, _, _ := net.SplitHostPort(r.URL.Host)
 	p.Warnf("[%d][%s:%s] %v: %v. %d байт за %v (всего %v байт)", numCon, ip, p.Users[ip].name, r.Method, r.URL.Host, num, duration, p.Users[ip].traffic)
-
+	if p.Grab != nil {
+		p.Grab.UpdateStat(ip, r.URL.Host, num)
+	}
 }
 
 //Функция туннелирования CONNECT-запросов (https)
@@ -225,7 +247,11 @@ func (p *ProxyServ) handleConnect(w http.ResponseWriter, r *http.Request) {
 	ip := p.manageUsers(r)
 	p.Users[ip].traffic += num
 
-	p.Warnf("[%d][%s:%s] %v:  %v. %d байт за %v (всего %v байт)", numCon, ip, p.Users[ip].name, r.Method, r.URL.Host, num, duration, p.Users[ip].traffic)
+	webSite, _, _ := net.SplitHostPort(r.URL.Host)
+	p.Warnf("[%d][%s:%s] %v:  %v. %d байт за %v (всего %v байт)", numCon, ip, p.Users[ip].name, r.Method, webSite, num, duration, p.Users[ip].traffic)
+	if p.Grab != nil {
+		p.Grab.UpdateStat(ip, webSite, num)
+	}
 }
 
 //Debugf вывод для отладки если задан параметр Debug

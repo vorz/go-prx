@@ -33,8 +33,16 @@ func main() {
 	logger.Printf("Сервер запущен: %v", time.Now())
 
 	pServ = prx.NewServ(logger, *dbg)
+	pServ.Grab = base
+
+	base.AddRestricts("yandex.ru", "reddit.com", "lenta.ru")
+	list := base.GetRestricts()
+	pServ.Restricts = list
 
 	go updateBase(1, base)
+
+	http.HandleFunc("/iii", indexHandle)
+	go logger.Fatal(http.ListenAndServe(":80", nil))
 
 	logger.Fatal(http.ListenAndServe(":"+*port, pServ))
 }
@@ -46,9 +54,6 @@ func updateBase(mins int, m *model) {
 		for k := range pServ.Users {
 			name, tr := pServ.GetUser(k)
 			m.UpdateUser(k, name, tr)
-			lst := m.GetUsers()
-			log.Print("##### USERS #######")
-			log.Print(lst)
 		}
 	}
 }
