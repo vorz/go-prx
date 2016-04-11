@@ -39,10 +39,12 @@ func main() {
 	list := base.GetRestricts()
 	pServ.Restricts = list
 
+	//Функцию обновления базы данных раз в несколько минут
 	go updateBase(1, base)
 
-	http.HandleFunc("/iii", indexHandle)
-	go logger.Fatal(http.ListenAndServe(":80", nil))
+	//Инициализация роутера
+	router := routerInit() //from controller.go
+	go http.ListenAndServe(":800", router)
 
 	logger.Fatal(http.ListenAndServe(":"+*port, pServ))
 }
