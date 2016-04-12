@@ -16,7 +16,7 @@
 				<h1><a href="#">Proxy Server</a></h1>
 				<div class="right">
 					<p>
-						Welcome <a href="#"><strong>Администратор</strong></a> |
+						Welcome <a href="#"><strong>Administrator</strong></a> |
 						<a href="#">Logout</a>
 					</p>
 				</div>
@@ -65,9 +65,32 @@
 		<br />
 		<h6 class="red">Ваш IP-adress: {{.IP}}</h6>
 		<h2>Общая статистика</h2>
-		<p>Всего траффика за месяц: {{.Traffic}} Кб</p>
+		<p>Всего траффика за месяц: {{.Traffic}}</p>
 		<br />
-		{{if ne .UserID -1}}<a href="stat/{{.UserID}}"><h6 class="blue">Посмотреть статистику по веб-сайтам.</h6></a>{{end}}
+		<a href="stat/{{.UserID}}"><h6 class="red">Посмотреть статистику по веб-сайтам.</h6></a>
+		<p>Loremtit amet dolor elementumod id a felis. </p>
+
+		<p> Nullacaucibus orci luctus et ultrices posuere cubilia Curae; Aliquam erat volutpat. </p>
+
+		<br />
+		<h6 class="red">Unordered List style</h6>
+		<ul>
+			<li>Sum dolor sit amet</li>
+			<li>Consectetur adipiscing elit</li>
+			<li>Aenean aliquam, diam id sagittisDictum</li>
+			<li>Justo est Sed posuere justo libero</li>
+			<li>Phasellus sed varius arcu</li>
+		</ul>
+
+		<br />
+		<h6 class="red">Ordered List style</h6>
+		<ol>
+			<li>Sum dolor sit amet</li>
+			<li>Consectetur adipiscing elit</li>
+			<li>Aenean aliquam, diam id sagittisDictum</li>
+			<li>Justo est Sed posuere justo libero</li>
+			<li>Phasellus sed varius arcu</li>
+		</ol>
 	</div>
 
 	<!-- End Content -->

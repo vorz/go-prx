@@ -17,6 +17,7 @@ var (
 )
 
 var pServ *prx.ProxyServ
+var base *model
 
 func main() {
 	// Просим Go использовать все имеющиеся в системе процессоры.
@@ -25,7 +26,7 @@ func main() {
 	//logFile, _ := os.Create("logs.txt")
 	//serv := http.Server{}
 
-	base := new(model)
+	base = new(model)
 	base.Init()
 	defer base.Close()
 

@@ -128,6 +128,8 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Header.Del("Proxy-Authorization")
 	r.Header.Del("Proxy-Connection")
 	r.Header.Del("Connection")
+	addr, _, _ := net.SplitHostPort(r.RemoteAddr)
+	r.Header.Set("X-Forwarded-For", addr)
 
 	resp, err := tr.RoundTrip(r)
 	if err != nil {

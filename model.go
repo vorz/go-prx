@@ -100,10 +100,9 @@ func (m *model) GetRestricts() []string {
 		list = append(list, site)
 	}
 	return list
-
 }
 
-func (m *model) UserExists(ip string) int {
+func (m *model) GetUserId(ip string) int {
 	var id int
 	err := db.QueryRow("SELECT id FROM users WHERE ip=?", ip).Scan(&id)
 	switch {
@@ -129,8 +128,20 @@ func (m *model) GetUsers() []string {
 	return list
 }
 
+func (m *model) GetTraffic(id int) int64 {
+	var traffic int64
+	err := db.QueryRow("SELECT traffic FROM users WHERE id=?", id).Scan(&traffic)
+	switch {
+	case err == sql.ErrNoRows:
+		return -1
+	case err != nil:
+		log.Fatal(err)
+	}
+	return traffic
+}
+
 func (m *model) UpdateUser(ip string, name string, traffic int64) bool {
-	if m.UserExists(ip) >= 0 {
+	if m.GetUserId(ip) >= 0 {
 		r, err := db.Exec("UPDATE users SET name=?, traffic=? WHERE ip=?", name, traffic, ip)
 		fatalError("Невозможно обновить базу данных", err)
 		num, _ := r.RowsAffected()
@@ -149,7 +160,7 @@ func (m *model) UpdateUser(ip string, name string, traffic int64) bool {
 }
 
 func (m *model) UpdateStat(ip string, site string, bytes int64) {
-	if userid := m.UserExists(ip); userid >= 0 {
+	if userid := m.GetUserId(ip); userid >= 0 {
 		var id int
 		var b int64
 		err := db.QueryRow("SELECT id, bytes FROM stats WHERE site=? AND user_id=?", site, userid).Scan(&id, &b)

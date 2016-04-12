@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -13,16 +14,35 @@ var templates *template.Template
 func routerInit() *httprouter.Router {
 	router := httprouter.New()
 
+	router.RedirectFixedPath = false
+	router.RedirectTrailingSlash = false
+
 	templates = parseTemplates()
 	router.GET("/", IndexHandle)
-	router.ServeFiles("/css/*filepath", http.Dir("/templates/css/"))
+	router.ServeFiles("/css/*filepath", http.Dir("templates/css"))
 
 	return router
 }
 
 //IndexHandle Стандартная функция обработчик
 func IndexHandle(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	err := templates.Lookup("index.html").Execute(w, nil)
+
+	var data struct {
+		IP      string
+		Traffic string
+		UserID  int
+	}
+
+	data.IP = r.Header.Get("X-Forwarded-For")
+
+	data.UserID = base.GetUserId(data.IP)
+	if data.UserID > 0 {
+		data.Traffic = strconv.FormatInt(int64(base.GetTraffic(data.UserID)/1000), 10)
+	} else {
+		data.Traffic = "Пользователь не зарегистрирован"
+	}
+
+	err := templates.Lookup("index.html").Execute(w, data)
 	if err != nil {
 		http.NotFound(w, r)
 	}
