@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-	<title>Прокси сервера</title>
+	<title>Панель конфигурации прокси сервера</title>
 	<link rel="stylesheet" href="/css/style.css" type="text/css" media="all" />
 </head>
 <body>
@@ -44,30 +44,35 @@
 	<!-- Content -->
 	<div id="content" class="shell">
 
-<!--
-		 Help Navigation
-		<div id="help-nav">
-			<a href="#">Dashboard</a> &gt; Current Article
-		</div>
-	 	End Help Navigation
-
-
-
-		<div class="message thank-message">
-			<p><strong>Congratulations your information has been submited!</strong></p>
-		</div>
-
-		<div class="message error-message">
-			<p><strong>Error! The following fields were not entred correctly...</strong></p>
-		</div>
--->
 		<br />
 		<br />
-		<h6 class="red">Ваш IP-adress: {{.IP}}</h6>
-		<h2>Общая статистика</h2>
-		<p>Всего траффика за месяц: {{.Traffic}} Кб</p>
+		<h6 class="red">Статистика по сайтам для {{.IP}}</h6>
 		<br />
-		{{if ne .UserID -1}}<a href="stat/{{.UserID}}"><h6 class="blue">Посмотреть статистику по веб-сайтам.</h6></a>{{end}}
+
+    <table border="0">
+       <tr>
+				 <th>Номер</th>
+         <th>Веб-сайт</th>
+         <th>Траффик за месяц</th>
+      </tr>
+      {{range $k, $v := .Sites}}
+					{{if (and (ge $k $.Page.IndexStart) (le $k $.Page.IndexEnd))}}
+		      <tr>
+			      <td>{{$k}}</td>
+		        <td>{{.SiteName}}</td>
+		        <td>{{.Traffic}}</td>
+		     </tr>
+		    {{end}}
+      {{end}}
+			{{if gt .Page.PagesNum 1}}
+			<tr>
+				<td>{{if gt .Page.Current 1}}<a href="/stat/{{.UserID}}?page={{.Page.Prev}}">Назад</a>{{end}}</td>
+				<td aligment="center"><b>{{.Page.Current}}</b> из <b>{{.Page.PagesNum}} </b></td>
+				<td>{{if lt .Page.Current .Page.PagesNum}}<a href="/stat/{{.UserID}}?page={{.Page.Next}}">Вперед</a>{{end}}</td>
+		 </tr>
+		 {{end}}
+    </table>
+		<br />
 	</div>
 
 	<!-- End Content -->

@@ -58,6 +58,11 @@ func (p *ProxyServ) GetUser(ip string) (string, int64) {
 	return p.Users[ip].name, p.Users[ip].traffic
 }
 
+//GetConnNumber получить количество соединений в текущий момент
+func (p *ProxyServ) GetConnNumber() int {
+	return numCon
+}
+
 //var users = make(map[string]string)
 
 func (p *ProxyServ) manageUsers(r *http.Request) string {
@@ -107,17 +112,6 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	p.Debugf("handleHttp. Запущена обработка http-соединения с методом %v", r.Method)
 
 	start := time.Now()
-
-	/*
-		for key, val := range r.Header {
-			p.Log.Print(key, " : ", val)
-		}
-		p.Log.Print(r.Body)
-
-		p.Log.Print("Host: ", r.Host, " ; ", " Is ABS: ", r.URL.IsAbs())
-		p.Log.Print("Remote: ", r.RemoteAddr, " ; ", " URL RequestURI: ", r.URL.RequestURI())
-		p.Log.Print("Content Length: ", r.ContentLength)
-	*/
 
 	r.RequestURI = ""
 	r.Header.Del("Accept-Encoding")

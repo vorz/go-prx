@@ -9,26 +9,34 @@ import (
 
 type model struct{}
 
-type user struct {
-	ip      string
-	name    string
-	traffic int64
+//Site - Структура используется при формировании выборки из бд stats
+type Site struct {
+	SiteName string
+	Traffic  int64
 }
 
-var users []user
-var restricts []string
+//User - Структура используется при формировании выборки из бд users
+type User struct {
+	IP      string
+	Name    string
+	Traffic int64
+}
 
 var db *sql.DB
+
+//Большинство ошибок с бд можно считать фатальными, при которой
+//невозможно продолжение работы (log.Fatal завершает программу),
+//поэтому обработку ошибок завернем в функцию
+func fatalError(text string, err error) {
+	if err != nil {
+		log.Fatal(text + " : " + err.Error())
+	}
+}
 
 func (m *model) Init() {
 	var err error
 	db, err = sql.Open("sqlite3", "proxbase.db")
 	fatalError("Невозможно загрузить базу данных!", err)
-	//defer base.Close()
-
-	///DEBUG
-	//_, err = db.Exec("DROP TABLE IF EXISTS users")
-	//fatalError("Невозможно удалить таблицу users", err)
 
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS `users` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, " +
 		"`ip` TEXT NOT NULL, `name` TEXT, `traffic` INTEGER NOT NULL)")
@@ -41,31 +49,6 @@ func (m *model) Init() {
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS `restricts` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, " +
 		"`site` TEXT NOT NULL)")
 	fatalError("Невозможно создать таблицу restricts: %v", err)
-
-	/*TEMP
-	ins, err := db.Prepare("INSERT INTO users(ip, name, traffic) values(?,?,?)")
-	if err != nil {
-		log.Fatalf("Невозможно создать запрос: %v", err.Error())
-	}
-	_, err = ins.Exec("192.168.57.5", "unknown", 0)
-	fatalError("Cannt insert vals", err)
-	//if err != nil {
-	//	log.Fatalf("Cannt insert vals coz %v", err.Error())
-	//}
-
-	rUsers, err := db.Query("SELECT ip, name, traffic FROM users")
-	fatalError("Ошибка при использовании SELECT", err)
-
-	for rUsers.Next() {
-		var ip, name string
-		var traffic int64
-		err = rUsers.Scan(&ip, &name, &traffic)
-		fatalError("", err)
-		users = append(users, user{ip, name, traffic})
-	}
-
-	//	log.Print(users)
-	*/
 }
 
 func (m *model) Close() {
@@ -114,18 +97,18 @@ func (m *model) GetUserId(ip string) int {
 	return id
 }
 
-func (m *model) GetUsers() []string {
-	rUsers, err := db.Query("SELECT ip FROM users")
+func (m *model) GetUsers() []User {
+	rUsers, err := db.Query("SELECT ip, name, traffic FROM users ORDER BY traffic DESC")
 	fatalError("Ошибка при использовании SELECT", err)
 
-	var list []string
+	var users []User
 
 	for rUsers.Next() {
-		var ip string
-		rUsers.Scan(&ip)
-		list = append(list, ip)
+		var u User
+		rUsers.Scan(&u.IP, &u.Name, &u.Traffic)
+		users = append(users, u)
 	}
-	return list
+	return users
 }
 
 func (m *model) GetTraffic(id int) int64 {
@@ -178,8 +161,18 @@ func (m *model) UpdateStat(ip string, site string, bytes int64) {
 	}
 }
 
-func fatalError(text string, err error) {
-	if err != nil {
-		log.Fatal(text + " : " + err.Error())
+//Получить список сайтов и трафик по id пользователя
+func (m *model) GetSitesStats(id int) []Site {
+	rSites, err := db.Query("SELECT site, bytes FROM stats WHERE user_id=? ORDER BY bytes DESC", id)
+	fatalError("Ошибка при использовании SELECT", err)
+
+	var sites []Site
+
+	for rSites.Next() {
+		var s Site
+		rSites.Scan(&s.SiteName, &s.Traffic)
+		sites = append(sites, s)
 	}
+
+	return sites
 }

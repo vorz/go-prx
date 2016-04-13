@@ -60,6 +60,8 @@ h6 { font-size:12px; line-height:16px; padding-bottom:5px; }
 #content p{ padding-bottom:15px;}
 #content ol,
 #content ul{ padding: 0 0 15px 25px;}
+#content th,
+#content td{ padding: 5px 10px;}
 #content li{ padding-bottom:3px; }
 #content a { text-decoration: underline;}
 #content a:hover { text-decoration: none;}
