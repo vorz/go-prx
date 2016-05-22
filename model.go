@@ -11,8 +11,8 @@ type model struct{}
 
 //Site - Структура используется при формировании выборки из бд stats
 type Site struct {
-	SiteName string
-	Traffic  int64
+	SiteName string `json:"sitename"`
+	Traffic  int64  `json:"traffic"`
 }
 
 //User - Структура используется при формировании выборки из бд users

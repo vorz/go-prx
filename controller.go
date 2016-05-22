@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"html/template"
 	"net"
@@ -34,6 +35,7 @@ func routerInit() *httprouter.Router {
 	router.GET("/overall", StatsHandler)
 	router.GET("/stat/:id", SiteStatHandler)
 	router.ServeFiles("/css/*filepath", http.Dir("templates/css"))
+	router.ServeFiles("/js/*filepath", http.Dir("templates/js"))
 
 	return router
 }
@@ -86,7 +88,7 @@ func IndexHandle(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		data.Traffic = "Пользователь не зарегистрирован"
 	}
 
-	err := templates.Lookup("index.html").Execute(w, data)
+	err := templates.Lookup("index.html").Execute(w, nil)
 	if err != nil {
 		http.NotFound(w, r)
 	}
@@ -106,7 +108,7 @@ func StatsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	data.Users = base.GetUsers()
 	data.UsersNum = len(data.Users)
 
-	err := pageInit(data.UsersNum, 10, &data.Page, r)
+	err := pageInit(data.UsersNum, 20, &data.Page, r)
 	if err != nil {
 		http.NotFound(w, r)
 	}
@@ -133,15 +135,20 @@ func SiteStatHandler(w http.ResponseWriter, r *http.Request, id httprouter.Param
 	}
 
 	data.Sites = base.GetSitesStats(data.UserID)
-	err = pageInit(len(data.Sites), 10, &data.Page, r)
+	err = pageInit(len(data.Sites), 25, &data.Page, r)
 	if err != nil {
 		http.NotFound(w, r)
 	}
 
-	err = templates.Lookup("sites.html").Execute(w, data)
-	if err != nil {
-		http.NotFound(w, r)
-	}
+	w.Header().Set("Content-Type", "application/json")
+
+	finalData, _ := json.Marshal(data)
+	w.Write([]byte(finalData))
+
+	// err = templates.Lookup("sites.html").Execute(w, data)
+	// if err != nil {
+	// 	http.NotFound(w, r)
+	// }
 }
 
 //Слепленный "на коленке" разделитель страниц
