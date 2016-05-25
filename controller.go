@@ -14,6 +14,7 @@ import (
 
 var templates *template.Template
 
+//Pages - temp
 type Pages struct {
 	PagesNum   int
 	Current    int
@@ -32,6 +33,7 @@ func routerInit() *httprouter.Router {
 
 	templates = parseTemplates()
 	router.GET("/", IndexHandle)
+	router.GET("/info", InfoHandler)
 	router.GET("/overall", StatsHandler)
 	router.GET("/stat/:id", SiteStatHandler)
 	router.ServeFiles("/css/*filepath", http.Dir("templates/css"))
@@ -117,6 +119,26 @@ func StatsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if err != nil {
 		http.NotFound(w, r)
 	}
+}
+
+//InfoHandler обработчик GET /info
+func InfoHandler(w http.ResponseWriter, r *http.Request, id httprouter.Params) {
+	var data struct {
+		IP      string
+		UserID  int
+		Traffic int64
+	}
+	data.IP = GetUserIP(r)
+	data.UserID = base.GetUserId(data.IP)
+	if data.UserID > 0 {
+		data.Traffic = base.GetTraffic(data.UserID)
+	} else {
+		data.Traffic = -1
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	finalData, _ := json.Marshal(data)
+	w.Write([]byte(finalData))
 }
 
 //SiteStatHandler обработчик GET /stat/id
