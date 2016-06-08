@@ -19,11 +19,21 @@ var tr = &http.Transport{
 //счетчик TCP-соединений
 var numCon int
 
-//Неэкспортируемая структура, которая хранит общую статистику потребляемого трафика
+//User структура, которая хранит общую статистику потребляемого трафика
 //по каждому юзеру (ip-адресу).
-type user struct {
-	name    string //днс-имя клиента (если есть)
-	traffic int64  //количество траффика
+type User struct {
+	Name    string //днс-имя клиента (если есть)
+	Traffic int64  //количество траффика
+	Limit   int64  //текущий лимит трафика для пользователя
+}
+
+//Stats структура, содержащая статистику
+type Stats struct {
+	IP    string
+	Name  string
+	Site  string
+	Bytes int64
+	Date  int64
 }
 
 //Grabber - Статистику по каждому посещаемому сайту и список сайтов
@@ -37,8 +47,9 @@ type Grabber interface {
 type ProxyServ struct {
 	Log       *log.Logger
 	Debug     bool
-	Users     map[string]*user
 	Grab      Grabber
+	Users     map[string]*User
+	Stats     chan Stats
 	Restricts []string
 	sync.Mutex
 }
@@ -48,14 +59,15 @@ func NewServ(logger *log.Logger, d bool) *ProxyServ {
 	serv := new(ProxyServ)
 	serv.Log = logger
 	serv.Debug = d
-	serv.Users = make(map[string]*user)
+	serv.Users = make(map[string]*User)
+	serv.Stats = make(chan Stats, 1000)
 
 	return serv
 }
 
 //GetUser получить днс-имя и траффик по ip
 func (p *ProxyServ) GetUser(ip string) (string, int64) {
-	return p.Users[ip].name, p.Users[ip].traffic
+	return p.Users[ip].Name, p.Users[ip].Traffic
 }
 
 //GetConnNumber получить количество соединений в текущий момент
@@ -68,14 +80,14 @@ func (p *ProxyServ) GetConnNumber() int {
 func (p *ProxyServ) manageUsers(r *http.Request) string {
 	if clientIP, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		if _, ok := p.Users[clientIP]; !ok {
-			u := new(user)
-			u.name = "unknown"
-			u.traffic = 0
+			u := new(User)
+			u.Name = "unknown"
+			u.Traffic = 0
 			p.Users[clientIP] = u
 			go func(ip string) {
 				name, err := net.LookupAddr(ip)
 				if err == nil && len(name) > 0 {
-					p.Users[ip].name = name[0]
+					p.Users[ip].Name = name[0]
 				}
 			}(clientIP)
 		}
@@ -86,7 +98,6 @@ func (p *ProxyServ) manageUsers(r *http.Request) string {
 
 //Стандартная функция ServeHTTP интерфейса Handler
 func (p *ProxyServ) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	p.Debugf("-------Получен запрос %v %v %v %v", r.URL.Path, r.Host, r.Method, r.URL.String())
 
 	p.Lock()
 	numCon++
@@ -99,19 +110,42 @@ func (p *ProxyServ) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var stat Stats
+	stat.Date = time.Now().Unix()
+	stat.IP = p.manageUsers(r)
+	stat.Name = p.Users[stat.IP].Name
+
+	start := time.Now()
+
 	if r.Method == "CONNECT" {
-		p.handleConnect(w, r)
+		stat.Bytes = p.handleConnect(w, r)
+		stat.Site, _, _ = net.SplitHostPort(r.URL.Host)
 	} else {
-		p.handleHTTP(w, r)
+		stat.Bytes = p.handleHTTP(w, r)
+		stat.Site = r.URL.Host
 	}
+
+	finish := time.Now()
+	duration := finish.Sub(start)
+
+	if stat.Bytes > 0 {
+		p.Stats <- stat
+	}
+
+	p.Lock()
+	numCon--
+	p.Unlock()
+
+	ip := stat.IP
+	p.Users[ip].Traffic += stat.Bytes
+
+	p.Warnf("[%d][%s:%s] %v:  %v. %d байт за %v (всего %v байт)(chans %d)", numCon, ip, p.Users[ip].Name, r.Method, stat.Site, stat.Bytes, duration, p.Users[ip].Traffic, len(p.Stats))
 
 }
 
 //Функция обработки обычных http запросов
-func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
+func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) int64 {
 	p.Debugf("handleHttp. Запущена обработка http-соединения с методом %v", r.Method)
-
-	start := time.Now()
 
 	r.RequestURI = ""
 	r.Header.Del("Accept-Encoding")
@@ -130,12 +164,12 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		//p.Warnf("ОШИБКА при пересылке: %s", err.Error())
 		http.NotFound(w, r)
 		//http.Error(w, "Ошибка доступа к удаленному сайту: "+err.Error(), 404)
-		return
+		return 0
 	}
 	if resp == nil {
 		//p.Warnf("ОШИБКА получения ответа от сервера %v %v:", r.URL.Host, err.Error())
 		http.Error(w, "ОШИБКА получения ответа от сервера: "+err.Error(), 500)
-		return
+		return 0
 	}
 	p.Debugf("Получен ответ от %v: %v", r.URL.Host, resp.Status)
 
@@ -158,7 +192,7 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		p.Warnf("ОШИБКА чтения тела ответа %s", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return 0
 	}
 	if err := resp.Body.Close(); err != nil {
 		p.Warnf("ОШИБКА: невозможно закрыть http.Body. %v", err)
@@ -167,46 +201,35 @@ func (p *ProxyServ) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
 
-	finish := time.Now()
-	duration := finish.Sub(start)
-
-	p.Lock()
-	numCon--
-	p.Unlock()
-
-	ip := p.manageUsers(r)
 	num := int64(len(body))
-	p.Users[ip].traffic += num
 
-	//webSite, _, _ := net.SplitHostPort(r.URL.Host)
-	p.Warnf("[%d][%s:%s] %v: %v. %d байт за %v (всего %v байт)", numCon, ip, p.Users[ip].name, r.Method, r.URL.Host, num, duration, p.Users[ip].traffic)
-	if p.Grab != nil {
-		p.Grab.UpdateStat(ip, r.URL.Host, num)
-	}
+	// if p.Grab != nil {
+	// 	p.Grab.UpdateStat(ip, r.URL.Host, num)
+	// }
+
+	return num
 }
 
 //Функция туннелирования CONNECT-запросов (https)
-func (p *ProxyServ) handleConnect(w http.ResponseWriter, r *http.Request) {
+func (p *ProxyServ) handleConnect(w http.ResponseWriter, r *http.Request) int64 {
 	p.Debugf("=====handleConnect. Запущена обработка CONNECT")
-
-	start := time.Now()
 
 	conn, _, err := w.(http.Hijacker).Hijack()
 	if err != nil {
 		p.Panicf("Proxy hijacking not supporting %s: %s", r.RemoteAddr, err.Error())
-		return
+		return 0
 	}
 
 	_, err = io.WriteString(conn, "HTTP/1.0 200 Connection established\r\n\r\n")
 	if err != nil {
 		p.Warnf("ОШИБКА: Невозможно отправить ответ %s: %s", r.RemoteAddr, err.Error())
-		return
+		return 0
 	}
 
 	dstConn, err := net.Dial("tcp", r.URL.Host)
 	if err != nil {
 		p.Warnf("ОШИБКА: Невозможно соединиться с %s: %s", r.RequestURI, err.Error())
-		return
+		return 0
 	}
 
 	var done = make(chan int64)
@@ -220,8 +243,8 @@ func (p *ProxyServ) handleConnect(w http.ResponseWriter, r *http.Request) {
 		done <- n
 	}
 
-	go fCopy(dstConn, conn)
 	go fCopy(conn, dstConn)
+	go fCopy(dstConn, conn)
 
 	num := <-done
 	num += <-done
@@ -233,21 +256,11 @@ func (p *ProxyServ) handleConnect(w http.ResponseWriter, r *http.Request) {
 		p.Warnf("ОШИБКА закрытия соединения с удаленным узлом %s", err.Error())
 	}
 
-	finish := time.Now()
-	duration := finish.Sub(start)
+	// if p.Grab != nil {
+	// 	p.Grab.UpdateStat(ip, webSite, num)
+	// }
 
-	p.Lock()
-	numCon--
-	p.Unlock()
-
-	ip := p.manageUsers(r)
-	p.Users[ip].traffic += num
-
-	webSite, _, _ := net.SplitHostPort(r.URL.Host)
-	p.Warnf("[%d][%s:%s] %v:  %v. %d байт за %v (всего %v байт)", numCon, ip, p.Users[ip].name, r.Method, webSite, num, duration, p.Users[ip].traffic)
-	if p.Grab != nil {
-		p.Grab.UpdateStat(ip, webSite, num)
-	}
+	return num
 }
 
 //Debugf вывод для отладки если задан параметр Debug

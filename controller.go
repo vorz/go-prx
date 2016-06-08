@@ -34,10 +34,12 @@ func routerInit() *httprouter.Router {
 	templates = parseTemplates()
 	router.GET("/", IndexHandle)
 	router.GET("/info", InfoHandler)
+	router.GET("/users", UsersHandler)
 	router.GET("/overall", StatsHandler)
 	router.GET("/stat/:id", SiteStatHandler)
 	router.ServeFiles("/css/*filepath", http.Dir("templates/css"))
 	router.ServeFiles("/js/*filepath", http.Dir("templates/js"))
+	router.ServeFiles("/fonts/*filepath", http.Dir("templates/fonts"))
 
 	return router
 }
@@ -75,25 +77,27 @@ func parseTemplates() *template.Template {
 //IndexHandle Стандартная функция обработчик GET /
 func IndexHandle(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
-	var data struct {
-		IP      string
-		Traffic string
-		UserID  int
-	}
-
-	data.IP = GetUserIP(r)
-
-	data.UserID = base.GetUserId(data.IP)
-	if data.UserID > 0 {
-		data.Traffic = strconv.FormatInt(int64(base.GetTraffic(data.UserID)/1000), 10)
-	} else {
-		data.Traffic = "Пользователь не зарегистрирован"
-	}
-
 	err := templates.Lookup("index.html").Execute(w, nil)
 	if err != nil {
 		http.NotFound(w, r)
 	}
+}
+
+//UsersHandler обработчик GET /users
+func UsersHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	var data struct {
+		Conns    int
+		UsersNum int
+		Users    []*User
+	}
+
+	data.Conns = pServ.GetConnNumber()
+	data.Users = base.GetUsers()
+	data.UsersNum = len(data.Users)
+
+	w.Header().Set("Content-Type", "application/json")
+	finalData, _ := json.Marshal(data)
+	w.Write([]byte(finalData))
 
 }
 
@@ -102,36 +106,41 @@ func StatsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var data struct {
 		Conns    int
 		UsersNum int
-		Users    []User
-		Page     Pages
+		Traffic  int64
+		Logs     []Log
 	}
 
 	data.Conns = pServ.GetConnNumber()
-	data.Users = base.GetUsers()
-	data.UsersNum = len(data.Users)
+	stats := base.GetOverall()
+	data.UsersNum = stats.UsersNum
+	data.Traffic = stats.Traffic
+	data.Logs = base.GetRawStats(100)
 
-	err := pageInit(data.UsersNum, 20, &data.Page, r)
-	if err != nil {
-		http.NotFound(w, r)
-	}
+	w.Header().Set("Content-Type", "application/json")
+	finalData, _ := json.Marshal(data)
+	w.Write([]byte(finalData))
 
-	err = templates.Lookup("stats.html").Execute(w, data)
-	if err != nil {
-		http.NotFound(w, r)
-	}
 }
 
 //InfoHandler обработчик GET /info
 func InfoHandler(w http.ResponseWriter, r *http.Request, id httprouter.Params) {
 	var data struct {
 		IP      string
+		Name    string
 		UserID  int
 		Traffic int64
+		Limit   int64
 	}
+
 	data.IP = GetUserIP(r)
-	data.UserID = base.GetUserId(data.IP)
+	data.UserID = base.GetUserID(data.IP)
 	if data.UserID > 0 {
-		data.Traffic = base.GetTraffic(data.UserID)
+		usr := base.GetUserInfo(data.UserID)
+		if usr != nil {
+			data.Name = usr.Name
+			data.Traffic = usr.Traffic
+			data.Limit = usr.Limit
+		}
 	} else {
 		data.Traffic = -1
 	}
@@ -157,20 +166,12 @@ func SiteStatHandler(w http.ResponseWriter, r *http.Request, id httprouter.Param
 	}
 
 	data.Sites = base.GetSitesStats(data.UserID)
-	err = pageInit(len(data.Sites), 25, &data.Page, r)
-	if err != nil {
-		http.NotFound(w, r)
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 
 	finalData, _ := json.Marshal(data)
 	w.Write([]byte(finalData))
 
-	// err = templates.Lookup("sites.html").Execute(w, data)
-	// if err != nil {
-	// 	http.NotFound(w, r)
-	// }
 }
 
 //Слепленный "на коленке" разделитель страниц
