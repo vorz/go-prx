@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"html/template"
 	"net"
 	"net/http"
@@ -40,6 +39,7 @@ func routerInit() *httprouter.Router {
 	router.ServeFiles("/css/*filepath", http.Dir("templates/css"))
 	router.ServeFiles("/js/*filepath", http.Dir("templates/js"))
 	router.ServeFiles("/fonts/*filepath", http.Dir("templates/fonts"))
+	router.ServeFiles("/img/*filepath", http.Dir("templates/img"))
 
 	return router
 }
@@ -156,7 +156,7 @@ func SiteStatHandler(w http.ResponseWriter, r *http.Request, id httprouter.Param
 		IP     string
 		UserID int
 		Sites  []Site
-		Page   Pages
+		Days   []Day
 	}
 	data.IP = GetUserIP(r)
 	var err error
@@ -166,6 +166,9 @@ func SiteStatHandler(w http.ResponseWriter, r *http.Request, id httprouter.Param
 	}
 
 	data.Sites = base.GetSitesStats(data.UserID)
+	if data.UserID >= 0 {
+		data.Days = base.GetStatsByDays(data.UserID)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -175,24 +178,24 @@ func SiteStatHandler(w http.ResponseWriter, r *http.Request, id httprouter.Param
 }
 
 //Слепленный "на коленке" разделитель страниц
-func pageInit(num int, size int, page *Pages, r *http.Request) error {
-	p := r.URL.Query().Get("page")
-	if p == "" {
-		page.Current = 1
-	} else {
-		if n, e := strconv.Atoi(p); e == nil {
-			page.Current = n
-		} else {
-			return errors.New("Bad page number")
-		}
-	}
-	page.PagesNum = num/size + 1
-	if page.Current > page.PagesNum {
-		return errors.New("Empty page")
-	}
-	page.IndexStart = (page.Current - 1) * size
-	page.IndexEnd = page.Current * size
-	page.Prev = page.Current - 1
-	page.Next = page.Current + 1
-	return nil
-}
+// func pageInit(num int, size int, page *Pages, r *http.Request) error {
+// 	p := r.URL.Query().Get("page")
+// 	if p == "" {
+// 		page.Current = 1
+// 	} else {
+// 		if n, e := strconv.Atoi(p); e == nil {
+// 			page.Current = n
+// 		} else {
+// 			return errors.New("Bad page number")
+// 		}
+// 	}
+// 	page.PagesNum = num/size + 1
+// 	if page.Current > page.PagesNum {
+// 		return errors.New("Empty page")
+// 	}
+// 	page.IndexStart = (page.Current - 1) * size
+// 	page.IndexEnd = page.Current * size
+// 	page.Prev = page.Current - 1
+// 	page.Next = page.Current + 1
+// 	return nil
+// }

@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/vorz/go-prx/prx"
@@ -21,7 +20,7 @@ var base *model
 
 func main() {
 	// Просим Go использовать все имеющиеся в системе процессоры.
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	//runtime.GOMAXPROCS(runtime.NumCPU())
 
 	//logFile, _ := os.Create("logs.txt")
 	//serv := http.Server{}

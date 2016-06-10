@@ -9,10 +9,14 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
-var logger = log.New(ioutil.Discard, "log: ", log.Ltime) //"пустой" лог
+var logger = log.New(os.Stdout, "log: ", log.Ltime)
+
+//var logger = log.New(ioutil.Discard, "log: ", log.Ltime) //"пустой" лог
 var testProxy = NewServ(logger, false)
 var bufferedImage *bufio.Reader
 
@@ -138,7 +142,10 @@ func TestImageResponces(t *testing.T) {
 }
 
 func TestStress(t *testing.T) {
-	done := make(chan bool)
+	count := 100
+	var wg sync.WaitGroup
+	wg.Add(count)
+
 	proxy := httptest.NewServer(testProxy)
 	pURL, _ := url.Parse(proxy.URL)
 	clProxy := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pURL)}}
@@ -146,24 +153,25 @@ func TestStress(t *testing.T) {
 
 	_, startTraffic := testProxy.GetUser("127.0.0.1")
 
-	for i := 1; i < 50; i++ {
+	for i := 0; i < count; i++ {
 		go func() {
+			defer wg.Done()
 			resp, err := clProxy.Do(req)
 			if err != nil {
 				t.Errorf("Ошибка соединения: %v", err)
 			} else {
 				resp.Body.Close()
 			}
-			done <- true
 		}()
 	}
-	for i := 1; i < 50; i++ {
-		<-done
-	}
+
+	wg.Wait()
+	time.Sleep(3 * time.Second)
+
 	_, endTraffic := testProxy.GetUser("127.0.0.1")
 	copied := endTraffic - startTraffic
-	if copied != int64(imageSize) {
-		t.Errorf("В статистике прокси-сервера неправильный размер скопированной картинки (%v != %v)", copied, imageSize*50)
+	if copied != int64(imageSize*count) {
+		t.Errorf("В статистике прокси-сервера неправильный размер скопированной картинки (%v != %v)", copied, imageSize*count)
 	}
 	proxy.Close()
 }

@@ -132,12 +132,11 @@ func (p *ProxyServ) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.Stats <- stat
 	}
 
+	ip := stat.IP
 	p.Lock()
 	numCon--
-	p.Unlock()
-
-	ip := stat.IP
 	p.Users[ip].Traffic += stat.Bytes
+	p.Unlock()
 
 	p.Warnf("[%d][%s:%s] %v:  %v. %d байт за %v (всего %v байт)(chans %d)", numCon, ip, p.Users[ip].Name, r.Method, stat.Site, stat.Bytes, duration, p.Users[ip].Traffic, len(p.Stats))
 

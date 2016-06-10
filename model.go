@@ -40,6 +40,12 @@ type Stats struct {
 	Traffic  int64
 }
 
+//Day - структура для формирования выборки по дням
+type Day struct {
+	Day     string
+	Traffic int64
+}
+
 var db *sql.DB
 
 //Большинство ошибок с бд можно считать фатальными, при которой
@@ -266,7 +272,7 @@ func (m *model) UpdateStat(ip string, dns string, site string, bytes int64, date
 //Получить список сайтов и трафик по id пользователя
 func (m *model) GetSitesStats(id int) []Site {
 	var rSites *sql.Rows
-	var err Error
+	var err error
 	if id < 0 {
 		rSites, err = db.Query("SELECT sites.name, SUM(stats.bytes) AS bt FROM stats, sites "+
 			"WHERE sites.id = stats.site_id AND strftime('%m', stats.date,'unixepoch')=strftime('%m', 'now') GROUP BY stats.site_id ORDER BY bt DESC", id)
@@ -304,6 +310,23 @@ func (m *model) GetRawStats(limit int) []Log {
 	}
 
 	return log
+}
+
+func (m *model) GetStatsByDays(id int) []Day {
+	rStats, err := db.Query("SELECT SUM(stats.bytes), date(stats.date, 'unixepoch') AS dt "+
+		"FROM sites, stats WHERE sites.id=stats.site_id AND stats.user_id=? AND strftime('%m', stats.date,'unixepoch')=strftime('%m', 'now') GROUP BY strftime('%d', stats.date,'unixepoch') ORDER BY dt DESC", id)
+	fatalError("Ошибка при использовании SELECT", err)
+	defer rStats.Close()
+
+	var days []Day
+
+	for rStats.Next() {
+		var d Day
+		rStats.Scan(&d.Traffic, &d.Day)
+		days = append(days, d)
+	}
+
+	return days
 }
 
 /*
