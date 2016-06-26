@@ -14,9 +14,9 @@ import (
 	"time"
 )
 
-var logger = log.New(os.Stdout, "log: ", log.Ltime)
+//var logger = log.New(os.Stdout, "log: ", log.Ltime)
 
-//var logger = log.New(ioutil.Discard, "log: ", log.Ltime) //"пустой" лог
+var logger = log.New(ioutil.Discard, "log: ", log.Ltime) //"пустой" лог
 var testProxy = NewServ(logger, false)
 var bufferedImage *bufio.Reader
 
@@ -142,7 +142,7 @@ func TestImageResponces(t *testing.T) {
 }
 
 func TestStress(t *testing.T) {
-	count := 100
+	count := 50
 	var wg sync.WaitGroup
 	wg.Add(count)
 
